@@ -640,6 +640,33 @@ async function writeJson(path: string, value: unknown): Promise<void> {
   await Deno.writeTextFile(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+async function removeTemporaryDirectory(path: string): Promise<void> {
+  const attempts = Deno.build.os === "windows" ? 8 : 1;
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      await Deno.remove(path, { recursive: true });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (
+        Deno.build.os !== "windows" ||
+        !(error instanceof Deno.errors.PermissionDenied)
+      ) {
+        throw error;
+      }
+      if (attempt < attempts) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 250));
+      }
+    }
+  }
+
+  // Windows ARM runners can retain the completed x86_64-emulated process image
+  // briefly. The runner's temporary directory is ephemeral, so do not turn a
+  // successful digest, architecture, and execution proof into a false negative.
+  console.warn(`temporary cleanup deferred by Windows: ${String(lastError)}`);
+}
+
 async function verifyRelease(target: string, output: string): Promise<void> {
   const manifest = await loadManifest();
   const asset = manifest.releaseAssets.find((entry) => entry.target === target);
@@ -715,7 +742,7 @@ async function verifyRelease(target: string, output: string): Promise<void> {
       },
     });
   } finally {
-    await Deno.remove(temporary, { recursive: true });
+    await removeTemporaryDirectory(temporary);
   }
   console.log(
     `release=verified target=${asset.target} archive=${archiveSha256} binary=${binarySha256}`,

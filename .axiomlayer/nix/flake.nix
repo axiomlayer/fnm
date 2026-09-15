@@ -37,6 +37,11 @@
           nativeBuildInputs = [ pkgs.installShellFiles ];
           doCheck = true;
 
+          preCheck = ''
+            export XDG_STATE_HOME="$TMPDIR/xdg-state"
+            mkdir -p "$XDG_STATE_HOME"
+          '';
+
           postInstall = pkgs.lib.optionalString (pkgs.stdenv.buildPlatform.canExecute pkgs.stdenv.hostPlatform) ''
             installShellCompletion --cmd fnm \
               --bash <($out/bin/fnm completions --shell bash) \
