@@ -5,7 +5,7 @@ const PROMOTED = {
   tag: "v1.39.0",
   commit: "d2555b46362ad8888213b76822631561371ce199",
   baseline: "86adc9676ceb2a509b21e75e74048b93c89f097d",
-  dotfilesHead: "d7a9c4afc1083c17c06a2f82beb63a5d6292dca0",
+  dotfilesHead: "ee9c1a27542f7918a30d9e9e33155baea2b96c8a",
   nixpkgsCommit: "c3eea5b2156db11c7eeeada3dc737711255b253e",
 } as const;
 

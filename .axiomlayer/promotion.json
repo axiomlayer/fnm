@@ -15,7 +15,7 @@
   "promotionContract": {
     "repository": "axiomlayer/dotfiles",
     "pullRequest": 49,
-    "inspectedHead": "d7a9c4afc1083c17c06a2f82beb63a5d6292dca0",
+    "inspectedHead": "ee9c1a27542f7918a30d9e9e33155baea2b96c8a",
     "runtimePin": "d2555b46362ad8888213b76822631561371ce199"
   },
   "nix": {
