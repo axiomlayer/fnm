@@ -37,7 +37,7 @@
           nativeBuildInputs = [ pkgs.installShellFiles ];
           doCheck = true;
 
-          postInstall = pkgs.lib.optionalString pkgs.stdenv.buildPlatform.canExecute pkgs.stdenv.hostPlatform ''
+          postInstall = pkgs.lib.optionalString (pkgs.stdenv.buildPlatform.canExecute pkgs.stdenv.hostPlatform) ''
             installShellCompletion --cmd fnm \
               --bash <($out/bin/fnm completions --shell bash) \
               --fish <($out/bin/fnm completions --shell fish) \
