@@ -668,7 +668,14 @@ function hostMatches(asset: ReleaseAsset): void {
 }
 
 async function runVersion(binaryPath: string): Promise<string> {
-  if (Deno.build.os !== "windows") await Deno.chmod(binaryPath, 0o755);
+  if (Deno.build.os !== "windows") {
+    const mode = (await Deno.stat(binaryPath)).mode;
+    invariant(
+      mode !== null,
+      `cannot inspect executable mode for ${binaryPath}`,
+    );
+    if ((mode & 0o111) === 0) await Deno.chmod(binaryPath, 0o755);
+  }
   return await commandText(binaryPath, ["--version"]);
 }
 
