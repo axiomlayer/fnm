@@ -9,6 +9,16 @@ const PROMOTED = {
   nixpkgsCommit: "c3eea5b2156db11c7eeeada3dc737711255b253e",
 } as const;
 
+const NIX_NON_HERMETIC_TESTS = [
+  "archive::zip::tests::test_zip_extraction",
+  "commands::install::tests::test_install_latest",
+  "commands::install::tests::test_set_default_on_new_installation",
+  "downloader::tests::test_installing_node_12",
+  "downloader::tests::test_installing_npm",
+  "remote_node_index::tests::test_list",
+  "shell::infer::unix::tests::test_get_process_info",
+] as const;
+
 type HostOs = "darwin" | "linux" | "windows";
 type HostArch = "aarch64" | "x86_64";
 
@@ -65,6 +75,7 @@ interface PromotionManifest {
     nixpkgsNarHash: string;
     fnmSourceNarHash: string;
     cargoVendorHash: string;
+    nonHermeticTestFilters: string[];
   };
   actions: Record<string, string>;
   releaseAssets: ReleaseAsset[];
@@ -587,6 +598,32 @@ async function verifyContract(): Promise<void> {
   invariant(
     lock.nodes?.nixpkgs?.locked?.narHash === manifest.nix.nixpkgsNarHash,
     "flake nixpkgs NAR hash drift",
+  );
+  invariant(
+    equalStrings(
+      sorted(manifest.nix.nonHermeticTestFilters),
+      sorted([...NIX_NON_HERMETIC_TESTS]),
+    ),
+    "Nix non-hermetic test allowlist drift",
+  );
+  const flake = await Deno.readTextFile(repoPath(".axiomlayer/nix/flake.nix"));
+  invariant(
+    flake.includes("doCheck = true;") && !flake.includes("doCheck = false;"),
+    "Nix source tests must remain enabled",
+  );
+  const flakeSkips = [...flake.matchAll(/^\s+"([^"\n]+)"$/gm)]
+    .map((match) => match[1])
+    .filter((value) =>
+      NIX_NON_HERMETIC_TESTS.includes(
+        value as (typeof NIX_NON_HERMETIC_TESTS)[number],
+      )
+    );
+  invariant(
+    equalStrings(
+      sorted(flakeSkips),
+      sorted(manifest.nix.nonHermeticTestFilters),
+    ),
+    "Nix non-hermetic test filters differ from the manifest",
   );
 
   const installer = await Deno.readTextFile(

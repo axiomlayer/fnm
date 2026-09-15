@@ -33,7 +33,16 @@
     "nixpkgsCommit": "c3eea5b2156db11c7eeeada3dc737711255b253e",
     "nixpkgsNarHash": "sha256-vdhpDJ3Lr24lkZ+fDCjmBRRtw9/vcSzkqGJOJyF5h2U=",
     "fnmSourceNarHash": "sha256-sCPrHy1+hdv6schBxOP1+Y1hpag4/hdKPhG/PZhqKQA=",
-    "cargoVendorHash": "sha256-AVSphRupcncOmlIh4GXcPab2ePhS1jgaQLBKv2sRwuo="
+    "cargoVendorHash": "sha256-AVSphRupcncOmlIh4GXcPab2ePhS1jgaQLBKv2sRwuo=",
+    "nonHermeticTestFilters": [
+      "archive::zip::tests::test_zip_extraction",
+      "commands::install::tests::test_install_latest",
+      "commands::install::tests::test_set_default_on_new_installation",
+      "downloader::tests::test_installing_node_12",
+      "downloader::tests::test_installing_npm",
+      "remote_node_index::tests::test_list",
+      "shell::infer::unix::tests::test_get_process_info"
+    ]
   },
   "actions": {
     "actions/checkout": "11d5960a326750d5838078e36cf38b85af677262",

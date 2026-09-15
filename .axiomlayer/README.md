@@ -38,10 +38,10 @@ No organization setting is weakened to accommodate upstream tags.
 
 | Target | Source compatibility | Upstream release acceptance |
 | --- | --- | --- |
-| Linux x86_64 | Pinned Nix build with Cargo tests | Native ELF execution plus archive/binary SHA-256 |
-| Linux ARM64 | Pinned Nix build with Cargo tests | Native ELF execution plus archive/binary SHA-256 |
-| macOS x86_64 | Pinned Nix build with Cargo tests | Universal Mach-O executed natively; both slices required |
-| macOS ARM64 | Pinned Nix build with Cargo tests | Universal Mach-O executed natively; both slices required |
+| Linux x86_64 | Pinned Nix build with hermetic Cargo tests | Native ELF execution plus archive/binary SHA-256 |
+| Linux ARM64 | Pinned Nix build with hermetic Cargo tests | Native ELF execution plus archive/binary SHA-256 |
+| macOS x86_64 | Pinned Nix build with hermetic Cargo tests | Universal Mach-O executed natively; both slices required |
+| macOS ARM64 | Pinned Nix build with hermetic Cargo tests | Universal Mach-O executed natively; both slices required |
 | Windows x86_64 | Rust 1.88 Cargo test/build | Native PE execution plus archive/binary SHA-256 |
 | Windows ARM64 | No native promoted build claim | The promoted x86_64 PE is digest-checked and executed under Windows emulation |
 
@@ -50,6 +50,15 @@ script digest. That immutable script verifies its platform tarball against the
 per-platform digest also copied into `promotion.json`. The flake locks the
 Dotfiles #49 nixpkgs commit and the fnm source commit; it refuses lock updates
 in CI. Nix is not claimed on native Windows.
+
+The Nix sandbox runs the 23 deterministic upstream unit tests and explicitly
+filters seven tests that require live `nodejs.org` downloads or inspect the
+host process tree. The exact test names are duplicated in `promotion.json` and
+the flake; the contract rejects filter drift or disabling checks wholesale.
+The Windows x86_64 Cargo lane runs the unfiltered upstream suite with network
+access. The pinned nixpkgs package disables fnm checks entirely, so this lane
+intentionally provides stronger offline coverage while keeping the exclusions
+visible rather than pretending those tests are reproducible.
 
 The current Nix input comes from canonical `NixOS/nixpkgs` at the exact commit
 modeled for `AxiomLayer/nixpkgs`. Moving the URL to the true AxiomLayer fork is

@@ -42,6 +42,23 @@
             mkdir -p "$XDG_STATE_HOME"
           '';
 
+          checkFlags = [
+            "--skip"
+            "archive::zip::tests::test_zip_extraction"
+            "--skip"
+            "commands::install::tests::test_install_latest"
+            "--skip"
+            "commands::install::tests::test_set_default_on_new_installation"
+            "--skip"
+            "downloader::tests::test_installing_node_12"
+            "--skip"
+            "downloader::tests::test_installing_npm"
+            "--skip"
+            "remote_node_index::tests::test_list"
+            "--skip"
+            "shell::infer::unix::tests::test_get_process_info"
+          ];
+
           postInstall = pkgs.lib.optionalString (pkgs.stdenv.buildPlatform.canExecute pkgs.stdenv.hostPlatform) ''
             installShellCompletion --cmd fnm \
               --bash <($out/bin/fnm completions --shell bash) \
