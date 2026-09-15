@@ -1,0 +1,213 @@
+name: AxiomLayer fnm integration
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches:
+      - master
+      - "codex/**"
+      - "axiomlayer/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: axiomlayer-fnm-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DENO_VERSION: "2.9.6"
+  PROMOTED_COMMIT: d2555b46362ad8888213b76822631561371ce199
+  NIX_CONFIG: |
+    experimental-features = nix-command flakes
+    flake-registry =
+    accept-flake-config = false
+
+jobs:
+  contract:
+    if: github.repository == 'axiomlayer/fnm'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out the fork with immutable history
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Stage the foundation Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.9.6
+      - name: Verify formatting, types, policy, and drift rejection
+        run: |
+          deno fmt --config .axiomlayer/deno.json --check .axiomlayer/verify.ts .axiomlayer/verify_test.ts
+          deno lint --config .axiomlayer/deno.json .axiomlayer/verify.ts .axiomlayer/verify_test.ts
+          deno check --config .axiomlayer/deno.json .axiomlayer/verify.ts .axiomlayer/verify_test.ts
+          deno test --config .axiomlayer/deno.json --allow-read --allow-run=git .axiomlayer/verify_test.ts
+          deno run --config .axiomlayer/deno.json --allow-env --allow-read --allow-run=git .axiomlayer/verify.ts contract
+          git diff --check
+
+  release-integrity:
+    if: github.repository == 'axiomlayer/fnm'
+    name: release / ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64
+            runner: ubuntu-24.04
+          - target: linux-aarch64
+            runner: ubuntu-24.04-arm
+          - target: darwin-x86_64
+            runner: macos-15-intel
+          - target: darwin-aarch64
+            runner: macos-15
+          - target: windows-x86_64
+            runner: windows-2025
+          - target: windows-aarch64
+            runner: windows-11-arm
+    steps:
+      - name: Check out the integration contract
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Stage the foundation Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.9.6
+      - name: Verify archive, extracted binary, architecture, and execution
+        run: >-
+          deno run --config .axiomlayer/deno.json --allow-env --allow-read --allow-write --allow-run --allow-net=github.com,release-assets.githubusercontent.com,objects.githubusercontent.com
+          .axiomlayer/verify.ts release
+          ${{ matrix.target }}
+          .axiomlayer-receipts/release-${{ matrix.target }}.json
+      - name: Upload non-promotable integrity evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fnm-release-${{ matrix.target }}
+          path: .axiomlayer-receipts/release-${{ matrix.target }}.json
+          if-no-files-found: error
+          retention-days: 14
+
+  nix-source:
+    if: github.repository == 'axiomlayer/fnm'
+    name: nix source / ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64
+            system: x86_64-linux
+            runner: ubuntu-24.04
+          - target: linux-aarch64
+            system: aarch64-linux
+            runner: ubuntu-24.04-arm
+          - target: darwin-x86_64
+            system: x86_64-darwin
+            runner: macos-15-intel
+          - target: darwin-aarch64
+            system: aarch64-darwin
+            runner: macos-15
+    steps:
+      - name: Check out the integration contract
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Stage the foundation Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.9.6
+      - name: Materialize the exact promoted source for receipt binding
+        run: git worktree add --detach "$RUNNER_TEMP/fnm-promoted-source" "$PROMOTED_COMMIT"
+      - name: Install byte-pinned upstream Nix
+        run: /bin/sh .axiomlayer/install-nix-ci.sh
+      - name: Build and test the exact source from the locked flake
+        run: |
+          nix flake metadata --no-write-lock-file --json ./.axiomlayer/nix >/dev/null
+          git diff --exit-code -- .axiomlayer/nix/flake.lock
+          nix build --no-write-lock-file --no-update-lock-file --print-build-logs \
+            ".axiomlayer/nix#checks.${{ matrix.system }}.fnm"
+          test "$(./result/bin/fnm --version)" = "fnm 1.39.0"
+      - name: Bind the Nix output and NAR digest to hosted evidence
+        run: >-
+          deno run --config .axiomlayer/deno.json --allow-env --allow-read --allow-write --allow-run
+          .axiomlayer/verify.ts build-receipt
+          ${{ matrix.target }}
+          ./result/bin/fnm
+          .axiomlayer-receipts/nix-${{ matrix.target }}.json
+          nix
+          "$RUNNER_TEMP/fnm-promoted-source"
+      - name: Upload non-promotable Nix evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fnm-nix-${{ matrix.target }}
+          path: .axiomlayer-receipts/nix-${{ matrix.target }}.json
+          if-no-files-found: error
+          retention-days: 14
+
+  windows-source:
+    if: github.repository == 'axiomlayer/fnm'
+    name: cargo source / windows-x86_64
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - name: Check out the integration contract
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Stage the foundation Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.9.6
+      - name: Build and test the exact source with its declared Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add --detach "$RUNNER_TEMP/fnm-promoted-source" "$PROMOTED_COMMIT"
+          rustup set profile minimal
+          rustup toolchain install 1.88.0 --no-self-update
+          cargo +1.88.0 test --locked --manifest-path "$RUNNER_TEMP/fnm-promoted-source/Cargo.toml"
+          cargo +1.88.0 build --locked --release --manifest-path "$RUNNER_TEMP/fnm-promoted-source/Cargo.toml"
+      - name: Bind the Windows build digest to hosted evidence
+        shell: bash
+        run: >-
+          deno run --config .axiomlayer/deno.json --allow-env --allow-read --allow-write --allow-run
+          .axiomlayer/verify.ts build-receipt
+          windows-x86_64
+          "$RUNNER_TEMP/fnm-promoted-source/target/release/fnm.exe"
+          .axiomlayer-receipts/cargo-windows-x86_64.json
+          cargo
+          "$RUNNER_TEMP/fnm-promoted-source"
+      - name: Upload non-promotable Windows build evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fnm-cargo-windows-x86_64
+          path: .axiomlayer-receipts/cargo-windows-x86_64.json
+          if-no-files-found: error
+          retention-days: 14
+
+  integration-required:
+    if: always() && github.repository == 'axiomlayer/fnm'
+    runs-on: ubuntu-24.04
+    needs: [contract, release-integrity, nix-source, windows-source]
+    steps:
+      - name: Require every feasible hosted lane
+        env:
+          CONTRACT_RESULT: ${{ needs.contract.result }}
+          RELEASE_RESULT: ${{ needs.release-integrity.result }}
+          NIX_RESULT: ${{ needs.nix-source.result }}
+          WINDOWS_RESULT: ${{ needs.windows-source.result }}
+        run: |
+          test "$CONTRACT_RESULT" = success
+          test "$RELEASE_RESULT" = success
+          test "$NIX_RESULT" = success
+          test "$WINDOWS_RESULT" = success
